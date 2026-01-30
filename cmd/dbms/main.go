@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"intint64_db/internal/dbms"
+	"github.com/kimjooyoon/intint64_db/internal/dbms"
 )
 
 const defaultPort = "7770"

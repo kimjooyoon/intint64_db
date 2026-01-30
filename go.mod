@@ -1,4 +1,4 @@
-module intint64_db
+module github.com/kimjooyoon/intint64_db
 
 go 1.25.6
 

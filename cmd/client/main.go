@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"intint64_db/pkg/client"
+	"github.com/kimjooyoon/intint64_db/pkg/client"
 )
 
 func main() {
