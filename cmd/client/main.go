@@ -43,6 +43,15 @@ func main() {
 				fmt.Fprintln(os.Stderr, "send:", err)
 				continue
 			}
+		} else if p[0] == 6 {
+			vals, err := c.Range(p[2], p[3])
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "range:", err)
+				continue
+			}
+			for _, v := range vals {
+				fmt.Println(v)
+			}
 		} else {
 			resp, err := c.Query(p)
 			if err != nil {

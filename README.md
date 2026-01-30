@@ -11,7 +11,7 @@
 - query
   - 영속성 데이터를 조회하는 클라이언트 명령
 - last_id
-  - 0.value 를 통해 저장된 가장 마지막 id 를 가리키는 예약변수
+  - 0.0.0.value 를 통해 저장된 가장 마지막 id 를 가리키는 예약변수
 
 ### 특징
 
@@ -49,8 +49,6 @@
 - id 는 주소를 가리키는 int64, value 는 값을 가리키는 int64 를 넣는다
 - last_id 는 meta_ 가 붙은 파일에 저장된다
 
-- 
-
 #### command format(client)
 
 - 0.0.0.value : auto save
@@ -83,6 +81,8 @@
   - 가장 최근 접수된 type 번호 명령의 실행 시간 출력
 - 1.9.type.1 : read last call id
   - 가장 최근 접수된 type 번호 명령의 대상 id(혹은 id1) 출력
+- 6.0.id1.id2 : range query
+  - id1 부터 id2 까지(포함) value 를 순서대로 출력. 응답은 id당 1패킷(1.0.0.value)으로 여러 개 전송됨
 
 
 ### 나중에 확장 가능한 방향들
@@ -109,10 +109,5 @@
 
 - 5.0.id1.id2 :
   - id1 에서 4.0 으로 시작되는 명령이 실행될때 id2에도 전파
-
-#### range query format(client)
-
-- 6.0.id1.id2 :
-  - id1 부터 id2 까지 출력
 
 #### 

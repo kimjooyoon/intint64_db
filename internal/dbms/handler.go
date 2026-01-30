@@ -71,7 +71,7 @@ func RunServer(store *Store, listenAddr string) error {
 		if !ok {
 			continue
 		}
-		if p[0] != 0 && p[0] != 1 {
+		if p[0] != 0 && p[0] != 1 && p[0] != 6 {
 			continue
 		}
 		reqCh <- req{p: p, from: from}
@@ -100,6 +100,8 @@ func actor(store *Store, reqCh <-chan req, respCh chan<- resp) {
 				if out != nil {
 					respCh <- resp{p: *out, to: r.from}
 				}
+			case 6:
+				handleRangeQuery(store, r.p, r.from, respCh)
 			}
 		case <-ticker.C:
 			_ = store.Flush()
@@ -171,6 +173,21 @@ func timeQuantizedID(unit byte) int64 {
 			return hour*60 + min
 		}
 		return -1
+	}
+}
+
+func handleRangeQuery(store *Store, p packet, from *net.UDPAddr, respCh chan<- resp) {
+	a, b, c, d := p[0], p[1], p[2], p[3]
+	if a != 6 || b != 0 {
+		return
+	}
+	id1, id2 := c, d
+	if id1 > id2 {
+		id1, id2 = id2, id1
+	}
+	for id := id1; id <= id2; id++ {
+		val, _ := store.Read(id)
+		respCh <- resp{p: packet{1, 0, 0, val}, to: from}
 	}
 }
 

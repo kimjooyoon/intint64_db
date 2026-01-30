@@ -109,3 +109,33 @@ func (c *Client) ReadOne(id int64) (int64, error) {
 	}
 	return resp[3], nil
 }
+
+// Range sends 6.0.id1.id2 and returns values for id1 through id2 (inclusive).
+// Response is one packet per id, each packet (1,0,0,value). id1 > id2 returns empty slice.
+func (c *Client) Range(id1, id2 int64) ([]int64, error) {
+	if id1 > id2 {
+		return nil, nil
+	}
+	if _, err := c.conn.Write(Packet{6, 0, id1, id2}.bytes()); err != nil {
+		return nil, err
+	}
+	n := id2 - id1 + 1
+	out := make([]int64, 0, n)
+	// range 응답은 패킷 여러 개이므로 타임아웃을 넉넉히 (최대 60초)
+	rangeTimeout := min(c.timeout * time.Duration(n+1), 60 * time.Second)
+	deadline := time.Now().Add(rangeTimeout)
+	for range n {
+		_ = c.conn.SetReadDeadline(deadline)
+		b := make([]byte, PacketSize)
+		read, err := c.conn.Read(b)
+		if err != nil {
+			return out, err
+		}
+		if read < PacketSize {
+			return out, ErrShortRead
+		}
+		p := packetFromBytes(b)
+		out = append(out, p[3])
+	}
+	return out, nil
+}
