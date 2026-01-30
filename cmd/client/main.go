@@ -43,14 +43,13 @@ func main() {
 				fmt.Fprintln(os.Stderr, "send:", err)
 				continue
 			}
-			fmt.Println("ok")
 		} else {
 			resp, err := c.Query(p)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "query:", err)
 				continue
 			}
-			fmt.Printf("%d.%d.%d.%d\n", resp[0], resp[1], resp[2], resp[3])
+			fmt.Println(resp[3])
 		}
 	}
 	if err := sc.Err(); err != nil {
