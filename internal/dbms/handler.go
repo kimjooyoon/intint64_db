@@ -3,6 +3,7 @@ package dbms
 import (
 	"encoding/binary"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -21,13 +22,24 @@ func parsePacket(b []byte) (p packet, ok bool) {
 	return p, true
 }
 
+var respBufPool = sync.Pool{
+	New: func() any { b := make([]byte, packetSize); return &b },
+}
+
 func (p packet) bytes() []byte {
 	b := make([]byte, packetSize)
+	p.writeTo(b)
+	return b
+}
+
+func (p packet) writeTo(b []byte) {
+	if len(b) < packetSize {
+		return
+	}
 	binary.LittleEndian.PutUint64(b[0:8], uint64(p[0]))
 	binary.LittleEndian.PutUint64(b[8:16], uint64(p[1]))
 	binary.LittleEndian.PutUint64(b[16:24], uint64(p[2]))
 	binary.LittleEndian.PutUint64(b[24:32], uint64(p[3]))
-	return b
 }
 
 type req struct {
@@ -57,7 +69,11 @@ func RunServer(store *Store, listenAddr string) error {
 	go actor(store, reqCh, respCh)
 	go func() {
 		for r := range respCh {
-			_, _ = conn.WriteToUDP(r.p.bytes(), r.to)
+			buf := respBufPool.Get().(*[]byte)
+			bb := (*buf)[:packetSize]
+			r.p.writeTo(bb)
+			_, _ = conn.WriteToUDP(bb, r.to)
+			respBufPool.Put(buf)
 		}
 	}()
 

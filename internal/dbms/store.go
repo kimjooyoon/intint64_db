@@ -21,6 +21,8 @@ type Store struct {
 	saveSec   int64
 	quantUnit [quantizeMaxN]byte
 	lastCall  map[int64]lastCallInfo
+	// scratch: Read/Write 재사용 버퍼 (할당 제거, 단일 액터만 사용)
+	scratch [slotSize]byte
 }
 
 type lastCallInfo struct {
@@ -132,21 +134,19 @@ func (s *Store) Read(id int64) (int64, bool) {
 	if !s.inRange(id) {
 		return 0, false
 	}
-	b := make([]byte, slotSize)
-	_, err := s.data.ReadAt(b, id*slotSize)
+	_, err := s.data.ReadAt(s.scratch[:], id*slotSize)
 	if err != nil {
 		return 0, false
 	}
-	return int64(binary.LittleEndian.Uint64(b)), true
+	return int64(binary.LittleEndian.Uint64(s.scratch[:])), true
 }
 
 func (s *Store) Write(id int64, value int64) bool {
 	if !s.inRange(id) {
 		return false
 	}
-	b := make([]byte, slotSize)
-	binary.LittleEndian.PutUint64(b, uint64(value))
-	_, err := s.data.WriteAt(b, id*slotSize)
+	binary.LittleEndian.PutUint64(s.scratch[:], uint64(value))
+	_, err := s.data.WriteAt(s.scratch[:], id*slotSize)
 	if err != nil {
 		return false
 	}
