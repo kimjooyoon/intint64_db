@@ -15,7 +15,7 @@ build:
 # dbms Go 로 바로 실행 (포트 7770, 현재 디렉터리 데이터)
 run-dbms: dbms
 dbms:
-	go run ./cmd/ii64_dbms
+	PORT=$(DEFAULT_PORT) go run ./cmd/ii64_dbms
 
 # client 실행 (디폴트 127.0.0.1:7770, stdin 입력 대기)
 run-client: client

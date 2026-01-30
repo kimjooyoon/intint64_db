@@ -2,6 +2,7 @@ package dbms
 
 import (
 	"encoding/binary"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -162,7 +163,10 @@ func handleCommand(store *Store, p packet) {
 		store.SetLastID(c)
 	case 5:
 		unit := store.QuantizeUnit(c)
-		id := timeQuantizedID(unit)
+		offset := store.QuantizeOffset(c)
+		id := timeQuantizedID(unit) - offset
+		
+		log.Printf("timestamp id: %d, value: %d", id, d)
 		if id >= 0 {
 			store.Write(id, d)
 		}
@@ -170,26 +174,32 @@ func handleCommand(store *Store, p packet) {
 		if d >= 0 && d <= 62 {
 			store.SetQuantizeUnit(c, byte(d))
 		}
+	case 7:
+		store.SetQuantizeOffset(c, d)
 	}
 }
 
 func timeQuantizedID(unit byte) int64 {
 	now := time.Now().Unix()
+	var base int64
 	switch unit {
 	case 0:
-		return now
+		base = now
 	case 1:
-		return now / 60
+		base = now / 60
 	case 2:
-		return now / 3600
+		base = now / 3600
 	default:
 		if unit >= 3 && unit <= 62 {
 			min := int64(unit - 3)
 			hour := now / 3600
-			return hour*60 + min
+			base = hour*60 + min
+		} else {
+			return -1
 		}
-		return -1
 	}
+	
+	return base
 }
 
 func handleRangeQuery(store *Store, p packet, from *net.UDPAddr, respCh chan<- resp) {

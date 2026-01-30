@@ -14,17 +14,18 @@ const quantizeMaxN = 64
 // Store is single-owner: only the actor goroutine may call its methods (DoD/ECS style).
 // Data file is mmap'd; no lock (actor model, single writer).
 type Store struct {
-	dataPath  string
-	metaPath  string
-	quantPath string
-	file      *os.File
-	data      []byte // mmap slice, length = slots * slotSize
-	slots     int64
-	lastID    int64
-	dirty     bool
-	saveSec   int64
-	quantUnit [quantizeMaxN]byte
-	lastCall  map[int64]lastCallInfo
+	dataPath    string
+	metaPath    string
+	quantPath   string
+	file        *os.File
+	data        []byte // mmap slice, length = slots * slotSize
+	slots       int64
+	lastID      int64
+	dirty       bool
+	saveSec     int64
+	quantUnit   [quantizeMaxN]byte
+	quantOffset [quantizeMaxN]int64
+	lastCall    map[int64]lastCallInfo
 }
 
 type lastCallInfo struct {
@@ -129,16 +130,43 @@ func (s *Store) saveMeta() error {
 
 func (s *Store) loadQuantize() {
 	b, err := os.ReadFile(s.quantPath)
-	if err != nil || len(b) < quantizeMaxN {
+	if err != nil {
 		return
 	}
+	// 파일 형식: unit 64바이트 + offset 64*8바이트 = 576바이트
+	unitSize := quantizeMaxN
+	offsetSize := quantizeMaxN * slotSize
+	minSize := unitSize + offsetSize
+	if len(b) < minSize {
+		return
+	}
+	// unit 로드
 	for i := 0; i < quantizeMaxN && i < len(b); i++ {
 		s.quantUnit[i] = b[i]
+	}
+	// offset 로드
+	offsetStart := unitSize
+	for i := range quantizeMaxN {
+		off := offsetStart + i*slotSize
+		if off+slotSize <= len(b) {
+			s.quantOffset[i] = int64(binary.LittleEndian.Uint64(b[off : off+slotSize]))
+		}
 	}
 }
 
 func (s *Store) saveQuantize() error {
-	return os.WriteFile(s.quantPath, s.quantUnit[:], 0644)
+	unitSize := quantizeMaxN
+	offsetSize := quantizeMaxN * slotSize
+	b := make([]byte, unitSize+offsetSize)
+	// unit 저장
+	copy(b[0:unitSize], s.quantUnit[:])
+	// offset 저장
+	offsetStart := unitSize
+	for i := range quantizeMaxN {
+		off := offsetStart + i*slotSize
+		binary.LittleEndian.PutUint64(b[off:off+slotSize], uint64(s.quantOffset[i]))
+	}
+	return os.WriteFile(s.quantPath, b, 0644)
 }
 
 func (s *Store) Close() error {
@@ -204,6 +232,25 @@ func (s *Store) SetQuantizeUnit(n int64, unit byte) bool {
 		return false
 	}
 	s.quantUnit[n] = unit
+	_ = s.saveQuantize()
+	return true
+}
+
+func (s *Store) QuantizeOffset(n int64) int64 {
+	if n < 0 || n >= quantizeMaxN {
+		return 0
+	}
+	return s.quantOffset[n]
+}
+
+func (s *Store) SetQuantizeOffset(n int64, offset int64) bool {
+	if n < 0 || n >= quantizeMaxN {
+		return false
+	}
+	unit := s.QuantizeUnit(n)
+
+	qid := timeQuantizedID(unit)
+	s.quantOffset[n] = qid - offset
 	_ = s.saveQuantize()
 	return true
 }
