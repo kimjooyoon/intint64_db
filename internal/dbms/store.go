@@ -3,6 +3,8 @@ package dbms
 import (
 	"encoding/binary"
 	"os"
+
+	"golang.org/x/sys/unix"
 )
 
 const slotSize = 8
@@ -10,19 +12,19 @@ const metaSize = 4 * slotSize
 const quantizeMaxN = 64
 
 // Store is single-owner: only the actor goroutine may call its methods (DoD/ECS style).
+// Data file is mmap'd; no lock (actor model, single writer).
 type Store struct {
 	dataPath  string
 	metaPath  string
 	quantPath string
-	data      *os.File
+	file      *os.File
+	data      []byte // mmap slice, length = slots * slotSize
 	slots     int64
 	lastID    int64
 	dirty     bool
 	saveSec   int64
 	quantUnit [quantizeMaxN]byte
 	lastCall  map[int64]lastCallInfo
-	// scratch: Read/Write 재사용 버퍼 (할당 제거, 단일 액터만 사용)
-	scratch [slotSize]byte
 }
 
 type lastCallInfo struct {
@@ -54,8 +56,14 @@ func OpenStore(dataPath, metaPath, quantPath string, slots int64) (*Store, error
 		return nil, err
 	}
 
-	data, err := os.OpenFile(dataPath, os.O_RDWR, 0644)
+	file, err := os.OpenFile(dataPath, os.O_RDWR, 0644)
 	if err != nil {
+		return nil, err
+	}
+
+	data, err := unix.Mmap(int(file.Fd()), 0, int(size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
+	if err != nil {
+		file.Close()
 		return nil, err
 	}
 
@@ -63,16 +71,28 @@ func OpenStore(dataPath, metaPath, quantPath string, slots int64) (*Store, error
 		dataPath:  dataPath,
 		metaPath:  metaPath,
 		quantPath: quantPath,
+		file:      file,
 		data:      data,
 		slots:     slots,
 		lastCall:  make(map[int64]lastCallInfo),
 	}
 	if err := s.loadMeta(); err != nil {
-		data.Close()
+		s.closeMmap()
 		return nil, err
 	}
 	s.loadQuantize()
 	return s, nil
+}
+
+func (s *Store) closeMmap() {
+	if s.data != nil {
+		_ = unix.Munmap(s.data)
+		s.data = nil
+	}
+	if s.file != nil {
+		_ = s.file.Close()
+		s.file = nil
+	}
 }
 
 func (s *Store) loadMeta() error {
@@ -123,7 +143,8 @@ func (s *Store) saveQuantize() error {
 
 func (s *Store) Close() error {
 	s.flushLocked()
-	return s.data.Close()
+	s.closeMmap()
+	return nil
 }
 
 func (s *Store) inRange(id int64) bool {
@@ -131,25 +152,19 @@ func (s *Store) inRange(id int64) bool {
 }
 
 func (s *Store) Read(id int64) (int64, bool) {
-	if !s.inRange(id) {
+	if !s.inRange(id) || s.data == nil {
 		return 0, false
 	}
-	_, err := s.data.ReadAt(s.scratch[:], id*slotSize)
-	if err != nil {
-		return 0, false
-	}
-	return int64(binary.LittleEndian.Uint64(s.scratch[:])), true
+	off := id * slotSize
+	return int64(binary.LittleEndian.Uint64(s.data[off : off+slotSize])), true
 }
 
 func (s *Store) Write(id int64, value int64) bool {
-	if !s.inRange(id) {
+	if !s.inRange(id) || s.data == nil {
 		return false
 	}
-	binary.LittleEndian.PutUint64(s.scratch[:], uint64(value))
-	_, err := s.data.WriteAt(s.scratch[:], id*slotSize)
-	if err != nil {
-		return false
-	}
+	off := id * slotSize
+	binary.LittleEndian.PutUint64(s.data[off:off+slotSize], uint64(value))
 	s.dirty = true
 	return true
 }
@@ -214,12 +229,12 @@ func (s *Store) Flush() error {
 }
 
 func (s *Store) flushLocked() error {
+	if !s.dirty {
+		return nil
+	}
 	if s.data != nil {
-		_ = s.data.Sync()
+		_ = unix.Msync(s.data, unix.MS_SYNC)
 	}
-	if s.dirty {
-		s.dirty = false
-		return s.saveMeta()
-	}
-	return nil
+	s.dirty = false
+	return s.saveMeta()
 }
