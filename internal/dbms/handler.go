@@ -1,4 +1,4 @@
-package main
+package dbms
 
 import (
 	"encoding/binary"
@@ -30,19 +30,18 @@ func (p packet) bytes() []byte {
 	return b
 }
 
-// req: single channel into the actor (command or query).
 type req struct {
 	p    packet
 	from *net.UDPAddr
 }
 
-// resp: actor sends query responses here; one writer goroutine sends UDP.
 type resp struct {
 	p packet
 	to *net.UDPAddr
 }
 
-func runServer(store *Store, listenAddr string) error {
+// RunServer runs the DBMS UDP server. Blocks until error.
+func RunServer(store *Store, listenAddr string) error {
 	addr, err := net.ResolveUDPAddr("udp", listenAddr)
 	if err != nil {
 		return err
@@ -79,7 +78,6 @@ func runServer(store *Store, listenAddr string) error {
 	}
 }
 
-// actor: single goroutine that owns Store (DoD ECS). All reads/writes go through here.
 func actor(store *Store, reqCh <-chan req, respCh chan<- resp) {
 	interval := store.SaveIntervalSec()
 	if interval <= 0 {
@@ -117,7 +115,6 @@ func handleCommand(store *Store, p packet) {
 	switch b {
 	case 0:
 		if c == 0 {
-			// 0.0.0.value: auto save
 			next := store.LastID() + 1
 			if store.inRange(next) {
 				store.Write(next, d)
@@ -125,17 +122,14 @@ func handleCommand(store *Store, p packet) {
 			}
 		}
 	case 1:
-		// 0.1.id.value: target replace
 		store.Write(c, d)
 	case 2:
-		// 0.2.id.value: id값 >= last_id면 스킵, else 저장
 		cur, _ := store.Read(c)
 		if cur >= store.LastID() {
 			return
 		}
 		store.Write(c, d)
 	case 3:
-		// 0.3.id.value: id값 >= last_id면 수정+last_id=id+저장, else 스킵
 		cur, _ := store.Read(c)
 		if cur < store.LastID() {
 			return
@@ -143,21 +137,18 @@ func handleCommand(store *Store, p packet) {
 		store.Write(c, d)
 		store.SetLastID(c)
 	case 4:
-		// 0.4.id.value: id값 >= last_id면 수정+last_id=id+저장, else last_id만 id로
 		cur, _ := store.Read(c)
 		if cur >= store.LastID() {
 			store.Write(c, d)
 		}
 		store.SetLastID(c)
 	case 5:
-		// 0.5.n.value: 시간 퀀타이즈 인덱스에 저장
 		unit := store.QuantizeUnit(c)
 		id := timeQuantizedID(unit)
 		if id >= 0 {
 			store.Write(id, d)
 		}
 	case 6:
-		// 0.6.n.unit: 퀀타이즈 n의 단위 설정 (0=초,1=분,2=시,3~62=분0~59)
 		if d >= 0 && d <= 62 {
 			store.SetQuantizeUnit(c, byte(d))
 		}
@@ -191,7 +182,6 @@ func handleQuery(store *Store, p packet) *packet {
 	switch b {
 	case 0:
 		if c == 0 {
-			// 1.0.0.id: read one
 			val, ok := store.Read(d)
 			if !ok {
 				val = 0
@@ -199,7 +189,6 @@ func handleQuery(store *Store, p packet) *packet {
 			return &packet{1, 0, 0, val}
 		}
 	case 9:
-		// 1.9.type.0: last call timestamp, 1.9.type.1: last call id
 		ts, id, ok := store.LastCall(c)
 		if !ok {
 			ts, id = 0, 0

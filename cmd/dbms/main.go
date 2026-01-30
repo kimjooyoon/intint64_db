@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+
+	"intint64_db/internal/dbms"
 )
 
 const defaultPort = "7770"
@@ -17,14 +19,14 @@ func main() {
 		slots = n
 	}
 
-	store, err := OpenStore(dataPath, metaPath, quantPath, slots)
+	store, err := dbms.OpenStore(dataPath, metaPath, quantPath, slots)
 	if err != nil {
 		os.Exit(1)
 	}
 	defer store.Close()
 
 	listenAddr := ":" + port
-	if err := runServer(store, listenAddr); err != nil {
+	if err := dbms.RunServer(store, listenAddr); err != nil {
 		os.Exit(1)
 	}
 }

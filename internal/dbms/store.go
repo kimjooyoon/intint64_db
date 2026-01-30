@@ -1,4 +1,4 @@
-package main
+package dbms
 
 import (
 	"encoding/binary"
@@ -11,16 +11,16 @@ const quantizeMaxN = 64
 
 // Store is single-owner: only the actor goroutine may call its methods (DoD/ECS style).
 type Store struct {
-	dataPath   string
-	metaPath   string
-	quantPath  string
-	data       *os.File
-	slots      int64
-	lastID     int64
-	dirty      bool
-	saveSec    int64
-	quantUnit  [quantizeMaxN]byte
-	lastCall   map[int64]lastCallInfo
+	dataPath  string
+	metaPath  string
+	quantPath string
+	data      *os.File
+	slots     int64
+	lastID    int64
+	dirty     bool
+	saveSec   int64
+	quantUnit [quantizeMaxN]byte
+	lastCall  map[int64]lastCallInfo
 }
 
 type lastCallInfo struct {
