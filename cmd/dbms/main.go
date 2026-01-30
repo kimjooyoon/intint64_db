@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"intint64_db/internal/dbms"
@@ -26,6 +27,11 @@ func main() {
 	defer store.Close()
 
 	listenAddr := ":" + port
+	fmt.Fprintf(os.Stderr, "dbms listen %s\n", listenAddr)
+	fmt.Fprintf(os.Stderr, "  data   %s (slots %d)\n", dataPath, slots)
+	fmt.Fprintf(os.Stderr, "  meta   %s (last_id %d, save_interval %ds)\n", metaPath, store.LastID(), store.SaveIntervalSec())
+	fmt.Fprintf(os.Stderr, "  quant  %s\n", quantPath)
+
 	if err := dbms.RunServer(store, listenAddr); err != nil {
 		os.Exit(1)
 	}
