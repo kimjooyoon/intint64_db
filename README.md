@@ -10,6 +10,29 @@ make dbms
 make client # dbms 와 다른 쉘에서 실행
 ```
 
+### 코드 구조 및 흐름 (미리 알아두면 좋은 것)
+
+- **디렉터리**
+  - `cmd/dbms`: dbms 진입점. Store 열고 UDP 서버 기동. 독립 프로세스로만 띄움.
+  - `cmd/client`: CLI. 주소·포트 인자로 연결 후 stdin 에서 `a.b.c.d` 입력.
+  - `internal/dbms`: Store(mmap 데이터 파일), RunServer(UDP 수신·액터·응답 전송), command/query 처리.
+  - `pkg/client`: 다른 Go 프로젝트에서 import 하는 클라이언트 라이브러리. `New(addr)`, `Send`, `Query`, `Range` 등.
+
+- **dbms 런타임 흐름**
+  - UDP 로 32바이트(4×int64, little-endian) 수신 → `reqCh` 로 전달.
+  - **액터 한 개**가 `reqCh` 만 소비. command(0) / query(1) / range(6) 구분 후 Store 접근(읽기·쓰기) 및 `lastCall` 갱신.
+  - Store 는 이 액터만 접근. lock 없음.
+  - 쿼리·range 응답은 액터가 `respCh` 에 넣으면, 별도 고루틴이 UDP 로 전송.
+  - 주기적으로 액터가 Store.Flush() (msync + meta 저장).
+
+- **Wire 포맷**
+  - UDP 패킷은 문자열이 아니라 **32바이트 바이너리**(4×int64, little-endian). 한 패킷이 하나의 command 또는 query.
+
+- **dbms 환경변수**
+  - `DATA_PATH`, `META_PATH`, `QUANT_PATH`: 파일 경로 (기본값 각각 data.bin, meta_.bin, quantize.bin).
+  - `PORT`: 수신 포트 (기본 7770).
+  - `SLOTS`: 데이터 파일 슬롯 수 (기본 1048576). 파일 크기 = SLOTS × 8 바이트.
+
 ### 용어사전
 
 - id
